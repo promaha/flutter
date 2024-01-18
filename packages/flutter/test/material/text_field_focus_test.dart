@@ -9,6 +9,24 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  // Regression test for https://github.com/flutter/flutter/issues/87099
+  testWidgets('TextField.autofocus should skip the element that never layout', (WidgetTester tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Navigator(
+            pages: const <Page<void>>[_APage(), _BPage()],
+            onPopPage: (Route<dynamic> route, dynamic result) {
+              return false;
+            },
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('Dialog interaction', (WidgetTester tester) async {
     expect(tester.testTextInput.isVisible, isFalse);
 
@@ -120,6 +138,9 @@ void main() {
     await tester.idle();
 
     expect(tester.testTextInput.isVisible, isTrue);
+    // Prevent the gesture recognizer from recognizing the next tap as a
+    // double-tap.
+    await tester.pump(const Duration(seconds: 1));
 
     tester.testTextInput.hide();
     final EditableTextState state = tester.state<EditableTextState>(find.byType(EditableText));
@@ -454,8 +475,6 @@ void main() {
 
     final TestGesture down1 = await tester.startGesture(tester.getCenter(find.byType(TextField).first), kind: PointerDeviceKind.mouse);
     await tester.pump();
-    await tester.pumpAndSettle();
-    await down1.up();
     await down1.removePointer();
 
     expect(focusNodeA.hasFocus, true);
@@ -527,4 +546,24 @@ void main() {
     expect(focusNodeA.hasFocus, false);
     expect(focusNodeB.hasFocus, true);
   }, variant: TargetPlatformVariant.desktop());
+}
+
+class _APage extends Page<void> {
+  const _APage();
+
+  @override
+  Route<void> createRoute(BuildContext context) => PageRouteBuilder<void>(
+    settings: this,
+    pageBuilder: (_, __, ___) => const TextField(autofocus: true),
+  );
+}
+
+class _BPage extends Page<void> {
+  const _BPage();
+
+  @override
+  Route<void> createRoute(BuildContext context) => PageRouteBuilder<void>(
+    settings: this,
+    pageBuilder: (_, __, ___) => const Text('B'),
+  );
 }

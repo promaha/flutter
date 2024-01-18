@@ -9,24 +9,22 @@ import 'dart:convert';
 
 import 'package:file/memory.dart';
 import 'package:flutter_tools/src/artifacts.dart';
-import 'package:flutter_tools/src/base/common.dart';
 import 'package:flutter_tools/src/base/file_system.dart';
 import 'package:flutter_tools/src/base/io.dart';
 import 'package:flutter_tools/src/base/os.dart';
 import 'package:flutter_tools/src/base/platform.dart';
 import 'package:flutter_tools/src/build_info.dart';
 import 'package:flutter_tools/src/device.dart';
-import 'package:flutter_tools/src/fuchsia/amber_ctl.dart';
 import 'package:flutter_tools/src/fuchsia/application_package.dart';
-import 'package:flutter_tools/src/fuchsia/fuchsia_dev_finder.dart';
 import 'package:flutter_tools/src/fuchsia/fuchsia_device.dart';
 import 'package:flutter_tools/src/fuchsia/fuchsia_ffx.dart';
 import 'package:flutter_tools/src/fuchsia/fuchsia_kernel_compiler.dart';
 import 'package:flutter_tools/src/fuchsia/fuchsia_pm.dart';
 import 'package:flutter_tools/src/fuchsia/fuchsia_sdk.dart';
+import 'package:flutter_tools/src/fuchsia/pkgctl.dart';
 import 'package:flutter_tools/src/fuchsia/session_control.dart';
 import 'package:flutter_tools/src/fuchsia/tiles_ctl.dart';
-import 'package:flutter_tools/src/globals_null_migrated.dart' as globals;
+import 'package:flutter_tools/src/globals.dart' as globals;
 import 'package:flutter_tools/src/project.dart';
 import 'package:meta/meta.dart';
 import 'package:test/fake.dart';
@@ -268,7 +266,7 @@ void main() {
                 '--deterministic',
                 '--snapshot_kind=app-aot-elf',
                 '--elf=build/fuchsia/elf.aotsnapshot',
-                'build/fuchsia/app_name.dil'
+                'build/fuchsia/app_name.dil',
               ],
             ),
             FakeCommand(
@@ -301,7 +299,7 @@ void main() {
             '--deterministic',
             '--snapshot_kind=app-aot-elf',
             '--elf=build/fuchsia/elf.aotsnapshot',
-            'build/fuchsia/app_name.dil'
+            'build/fuchsia/app_name.dil',
           ],
         ),
         FakeCommand(
@@ -354,7 +352,7 @@ void main() {
       Artifacts: () => artifacts,
       FileSystem: () => memoryFileSystem,
       ProcessManager: () => FakeProcessManager.any(),
-      FuchsiaArtifacts: () => FuchsiaArtifacts(sshConfig: null),
+      FuchsiaArtifacts: () => FuchsiaArtifacts(),
       OperatingSystemUtils: () => osUtils,
     });
 
@@ -369,9 +367,7 @@ void main() {
       FuchsiaDeviceTools: () => fuchsiaDeviceTools,
       FuchsiaArtifacts: () => FuchsiaArtifacts(sshConfig: sshConfig),
       OperatingSystemUtils: () => osUtils,
-      Platform: () => FakePlatform(
-        operatingSystem: 'linux',
-      ),
+      Platform: () => FakePlatform(),
     });
 
     testUsingContext('fail with correct LaunchResult when pm fails', () async {
@@ -389,7 +385,8 @@ void main() {
       OperatingSystemUtils: () => osUtils,
     });
 
-    testUsingContext('fail with correct LaunchResult when amber fails', () async {
+    testUsingContext('fail with correct LaunchResult when pkgctl fails',
+        () async {
       final LaunchResult launchResult =
           await setupAndStartApp(prebuilt: true, mode: BuildMode.release);
       expect(launchResult.started, isFalse);
@@ -398,7 +395,7 @@ void main() {
       Artifacts: () => artifacts,
       FileSystem: () => memoryFileSystem,
       ProcessManager: () => fakeSuccessfulProcessManager,
-      FuchsiaDeviceTools: () => FakeFuchsiaDeviceTools(amber: FailingAmberCtl()),
+      FuchsiaDeviceTools: () => FakeFuchsiaDeviceTools(pkgctl: FailingPkgctl()),
       FuchsiaArtifacts: () => FuchsiaArtifacts(sshConfig: sshConfig),
       FuchsiaSdk: () => fuchsiaSdk,
       OperatingSystemUtils: () => osUtils,
@@ -478,66 +475,40 @@ class FakeFuchsiaIsolateDiscoveryProtocol implements FuchsiaIsolateDiscoveryProt
   void dispose() {}
 }
 
-class FakeFuchsiaAmberCtl implements FuchsiaAmberCtl {
+class FakeFuchsiaPkgctl implements FuchsiaPkgctl {
   @override
-  Future<bool> addSrc(FuchsiaDevice device, FuchsiaPackageServer server) async {
+  Future<bool> addRepo(
+      FuchsiaDevice device, FuchsiaPackageServer server) async {
     return true;
   }
 
   @override
-  Future<bool> rmSrc(FuchsiaDevice device, FuchsiaPackageServer server) async {
+  Future<bool> resolve(
+      FuchsiaDevice device, String serverName, String packageName) async {
     return true;
   }
 
   @override
-  Future<bool> getUp(FuchsiaDevice device, String packageName) async {
-    return true;
-  }
-
-  @override
-  Future<bool> addRepoCfg(FuchsiaDevice device, FuchsiaPackageServer server) async {
-    return true;
-  }
-
-  @override
-  Future<bool> pkgCtlResolve(FuchsiaDevice device, FuchsiaPackageServer server, String packageName) async {
-    return true;
-  }
-
-  @override
-  Future<bool> pkgCtlRepoRemove(FuchsiaDevice device, FuchsiaPackageServer server) async {
+  Future<bool> rmRepo(FuchsiaDevice device, FuchsiaPackageServer server) async {
     return true;
   }
 }
 
-class FailingAmberCtl implements FuchsiaAmberCtl {
+class FailingPkgctl implements FuchsiaPkgctl {
   @override
-  Future<bool> addSrc(FuchsiaDevice device, FuchsiaPackageServer server) async {
+  Future<bool> addRepo(
+      FuchsiaDevice device, FuchsiaPackageServer server) async {
     return false;
   }
 
   @override
-  Future<bool> rmSrc(FuchsiaDevice device, FuchsiaPackageServer server) async {
+  Future<bool> resolve(
+      FuchsiaDevice device, String serverName, String packageName) async {
     return false;
   }
 
   @override
-  Future<bool> getUp(FuchsiaDevice device, String packageName) async {
-    return false;
-  }
-
-  @override
-  Future<bool> addRepoCfg(FuchsiaDevice device, FuchsiaPackageServer server) async {
-    return false;
-  }
-
-  @override
-  Future<bool> pkgCtlResolve(FuchsiaDevice device, FuchsiaPackageServer server, String packageName) async {
-    return false;
-  }
-
-  @override
-  Future<bool> pkgCtlRepoRemove(FuchsiaDevice device, FuchsiaPackageServer server) async {
+  Future<bool> rmRepo(FuchsiaDevice device, FuchsiaPackageServer server) async {
     return false;
   }
 }
@@ -633,15 +604,15 @@ class FailingFuchsiaSessionControl implements FuchsiaSessionControl {
 
 class FakeFuchsiaDeviceTools implements FuchsiaDeviceTools {
   FakeFuchsiaDeviceTools({
-    FuchsiaAmberCtl amber,
+    FuchsiaPkgctl pkgctl,
     FuchsiaTilesCtl tiles,
     FuchsiaSessionControl sessionControl,
-  }) : amberCtl = amber ?? FakeFuchsiaAmberCtl(),
-       tilesCtl = tiles ?? FakeFuchsiaTilesCtl(),
-       sessionControl = sessionControl ?? FakeFuchsiaSessionControl();
+  })  : pkgctl = pkgctl ?? FakeFuchsiaPkgctl(),
+        tilesCtl = tiles ?? FakeFuchsiaTilesCtl(),
+        sessionControl = sessionControl ?? FakeFuchsiaSessionControl();
 
   @override
-  final FuchsiaAmberCtl amberCtl;
+  final FuchsiaPkgctl pkgctl;
 
   @override
   final FuchsiaTilesCtl tilesCtl;
@@ -762,29 +733,6 @@ class FakeFuchsiaKernelCompiler implements FuchsiaKernelCompiler {
   }
 }
 
-class FailingKernelCompiler implements FuchsiaKernelCompiler {
-  @override
-  Future<void> build({
-    @required FuchsiaProject fuchsiaProject,
-    @required String target, // E.g., lib/main.dart
-    BuildInfo buildInfo = BuildInfo.debug,
-  }) async {
-    throwToolExit('Build process failed');
-  }
-}
-
-class FakeFuchsiaDevFinder implements FuchsiaDevFinder {
-  @override
-  Future<List<String>> list({ Duration timeout }) async {
-    return <String>['192.168.11.999 scare-cable-device-finder'];
-  }
-
-  @override
-  Future<String> resolve(String deviceName) async {
-    return '192.168.11.999';
-  }
-}
-
 class FakeFuchsiaFfx implements FuchsiaFfx {
   @override
   Future<List<String>> list({Duration timeout}) async {
@@ -801,11 +749,9 @@ class FakeFuchsiaSdk extends Fake implements FuchsiaSdk {
   FakeFuchsiaSdk({
     FuchsiaPM pm,
     FuchsiaKernelCompiler compiler,
-    FuchsiaDevFinder devFinder,
     FuchsiaFfx ffx,
   }) : fuchsiaPM = pm ?? FakeFuchsiaPM(),
        fuchsiaKernelCompiler = compiler ?? FakeFuchsiaKernelCompiler(),
-       fuchsiaDevFinder = devFinder ?? FakeFuchsiaDevFinder(),
        fuchsiaFfx = ffx ?? FakeFuchsiaFfx();
 
   @override
@@ -813,9 +759,6 @@ class FakeFuchsiaSdk extends Fake implements FuchsiaSdk {
 
   @override
   final FuchsiaKernelCompiler fuchsiaKernelCompiler;
-
-  @override
-  final FuchsiaDevFinder fuchsiaDevFinder;
 
   @override
   final FuchsiaFfx fuchsiaFfx;

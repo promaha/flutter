@@ -34,7 +34,6 @@ void main() {
     await gesture.moveTo(location);
     expect(hoverEvent, isNotNull);
     expect(hoverEvent!.position, location);
-    await gesture.removePointer();
   });
 
   testWidgets('hitTesting works when using setSurfaceSize', (WidgetTester tester) async {
@@ -94,4 +93,10 @@ void main() {
     expect(widgetCenter.dx, windowCenterX);
     expect(widgetCenter.dy, windowCenterY);
   });
+
+  testWidgets("reassembleApplication doesn't get stuck", (WidgetTester tester) async {
+    // Regression test for https://github.com/flutter/flutter/issues/79150
+
+    await expectLater(tester.binding.reassembleApplication(), completes);
+  }, timeout: const Timeout(Duration(seconds: 30)));
 }

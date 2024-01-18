@@ -7,8 +7,10 @@ import 'package:file/memory.dart';
 import 'package:flutter_tools/src/base/logger.dart';
 import 'package:flutter_tools/src/base/project_migrator.dart';
 import 'package:flutter_tools/src/ios/migrations/deployment_target_migration.dart';
+import 'package:flutter_tools/src/ios/migrations/minimum_frame_duration_migration.dart';
 import 'package:flutter_tools/src/ios/migrations/project_base_configuration_migration.dart';
 import 'package:flutter_tools/src/ios/migrations/project_build_location_migration.dart';
+import 'package:flutter_tools/src/ios/migrations/project_object_version_migration.dart';
 import 'package:flutter_tools/src/ios/migrations/remove_framework_link_and_embedding_migration.dart';
 import 'package:flutter_tools/src/ios/migrations/xcode_build_system_migration.dart';
 import 'package:flutter_tools/src/reporting/reporting.dart';
@@ -495,6 +497,7 @@ keep this 3
       late FakeIosProject project;
       late File xcodeProjectInfoFile;
       late File appFrameworkInfoPlist;
+      late File podfile;
 
       setUp(() {
         memoryFileSystem = MemoryFileSystem();
@@ -505,6 +508,9 @@ keep this 3
 
         appFrameworkInfoPlist = memoryFileSystem.file('AppFrameworkInfo.plist');
         project.appFrameworkInfoPlist = appFrameworkInfoPlist;
+
+        podfile = memoryFileSystem.file('Podfile');
+        project.podfile = podfile;
       });
 
       testWithoutContext('skipped if files are missing', () {
@@ -515,23 +521,29 @@ keep this 3
         expect(iosProjectMigration.migrate(), isTrue);
         expect(xcodeProjectInfoFile.existsSync(), isFalse);
         expect(appFrameworkInfoPlist.existsSync(), isFalse);
+        expect(podfile.existsSync(), isFalse);
 
         expect(testLogger.traceText, contains('Xcode project not found, skipping iOS deployment target version migration'));
         expect(testLogger.traceText, contains('AppFrameworkInfo.plist not found, skipping minimum OS version migration'));
+        expect(testLogger.traceText, contains('Podfile not found, skipping global platform version migration'));
         expect(testLogger.statusText, isEmpty);
       });
 
       testWithoutContext('skipped if nothing to upgrade', () {
-        const String xcodeProjectInfoFileContents = 'IPHONEOS_DEPLOYMENT_TARGET = 9.0;';
+        const String xcodeProjectInfoFileContents = 'IPHONEOS_DEPLOYMENT_TARGET = 11.0;';
         xcodeProjectInfoFile.writeAsStringSync(xcodeProjectInfoFileContents);
 
         const String appFrameworkInfoPlistContents = '''
   <key>MinimumOSVersion</key>
-  <string>9.0</string>
+  <string>11.0</string>
 ''';
         appFrameworkInfoPlist.writeAsStringSync(appFrameworkInfoPlistContents);
 
         final DateTime projectLastModified = xcodeProjectInfoFile.lastModifiedSync();
+
+        const String podfileFileContents = "# platform :ios, '11.0'";
+        podfile.writeAsStringSync(podfileFileContents);
+        final DateTime podfileLastModified = podfile.lastModifiedSync();
 
         final DeploymentTargetMigration iosProjectMigration = DeploymentTargetMigration(
           project,
@@ -542,11 +554,13 @@ keep this 3
         expect(xcodeProjectInfoFile.lastModifiedSync(), projectLastModified);
         expect(xcodeProjectInfoFile.readAsStringSync(), xcodeProjectInfoFileContents);
         expect(appFrameworkInfoPlist.readAsStringSync(), appFrameworkInfoPlistContents);
+        expect(podfile.lastModifiedSync(), podfileLastModified);
+        expect(podfile.readAsStringSync(), podfileFileContents);
 
         expect(testLogger.statusText, isEmpty);
       });
 
-      testWithoutContext('Xcode project is migrated to minimum version 8.0', () {
+      testWithoutContext('Xcode project is migrated to 11', () {
         xcodeProjectInfoFile.writeAsStringSync('''
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
@@ -554,6 +568,7 @@ keep this 3
 				ONLY_ACTIVE_ARCH = YES;
 
 				IPHONEOS_DEPLOYMENT_TARGET = 8.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 ''');
 
         appFrameworkInfoPlist.writeAsStringSync('''
@@ -565,8 +580,15 @@ keep this 3
   <string>1.0</string>
   <key>MinimumOSVersion</key>
   <string>8.0</string>
+  <key>MinimumOSVersion</key>
+  <string>11.0</string>
 </dict>
 </plist>
+''');
+
+        podfile.writeAsStringSync('''
+# platform :ios, '9.0'
+platform :ios, '9.0'
 ''');
 
         final DeploymentTargetMigration iosProjectMigration = DeploymentTargetMigration(
@@ -577,11 +599,12 @@ keep this 3
 
         expect(xcodeProjectInfoFile.readAsStringSync(), '''
 				GCC_WARN_UNUSED_VARIABLE = YES;
-				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				MTL_ENABLE_DEBUG_INFO = YES;
 				ONLY_ACTIVE_ARCH = YES;
 
-				IPHONEOS_DEPLOYMENT_TARGET = 9.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
+				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 ''');
 
         expect(appFrameworkInfoPlist.readAsStringSync(), '''
@@ -592,12 +615,205 @@ keep this 3
   <key>CFBundleVersion</key>
   <string>1.0</string>
   <key>MinimumOSVersion</key>
-  <string>9.0</string>
+  <string>11.0</string>
+  <key>MinimumOSVersion</key>
+  <string>11.0</string>
 </dict>
 </plist>
 ''');
+
+        expect(podfile.readAsStringSync(), '''
+# platform :ios, '11.0'
+platform :ios, '11.0'
+''');
         // Only print once even though 2 lines were changed.
-        expect('Updating minimum iOS deployment target from 8.0 to 9.0'.allMatches(testLogger.statusText).length, 1);
+        expect('Updating minimum iOS deployment target to 11.0'.allMatches(testLogger.statusText).length, 1);
+      });
+    });
+
+    group('update Xcode project object version', () {
+      late MemoryFileSystem memoryFileSystem;
+      late BufferLogger testLogger;
+      late FakeIosProject project;
+      late File xcodeProjectInfoFile;
+      late File xcodeProjectSchemeFile;
+
+      setUp(() {
+        memoryFileSystem = MemoryFileSystem();
+        testLogger = BufferLogger.test();
+        project = FakeIosProject();
+        xcodeProjectInfoFile = memoryFileSystem.file('project.pbxproj');
+        project.xcodeProjectInfoFile = xcodeProjectInfoFile;
+
+        xcodeProjectSchemeFile = memoryFileSystem.file('Runner.xcscheme');
+        project.xcodeProjectSchemeFile = xcodeProjectSchemeFile;
+      });
+
+      testWithoutContext('skipped if files are missing', () {
+        final ProjectObjectVersionMigration iosProjectMigration = ProjectObjectVersionMigration(
+          project,
+          testLogger,
+        );
+        expect(iosProjectMigration.migrate(), isTrue);
+        expect(xcodeProjectInfoFile.existsSync(), isFalse);
+        expect(xcodeProjectSchemeFile.existsSync(), isFalse);
+
+        expect(testLogger.traceText, contains('Xcode project not found, skipping Xcode compatibility migration'));
+        expect(testLogger.traceText, contains('Runner scheme not found, skipping Xcode compatibility migration'));
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('skipped if nothing to upgrade', () {
+        const String xcodeProjectInfoFileContents = '''
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+			attributes = {
+				LastUpgradeCheck = 1300;
+				ORGANIZATIONNAME = "";
+      ''';
+        xcodeProjectInfoFile.writeAsStringSync(xcodeProjectInfoFileContents);
+
+        const String xcodeProjectSchemeFileContents = '''
+   LastUpgradeVersion = "1300"
+''';
+        xcodeProjectSchemeFile.writeAsStringSync(xcodeProjectSchemeFileContents);
+
+        final DateTime projectLastModified = xcodeProjectInfoFile.lastModifiedSync();
+
+        final ProjectObjectVersionMigration iosProjectMigration = ProjectObjectVersionMigration(
+          project,
+          testLogger,
+        );
+        expect(iosProjectMigration.migrate(), isTrue);
+
+        expect(xcodeProjectInfoFile.lastModifiedSync(), projectLastModified);
+        expect(xcodeProjectInfoFile.readAsStringSync(), xcodeProjectInfoFileContents);
+        expect(xcodeProjectSchemeFile.readAsStringSync(), xcodeProjectSchemeFileContents);
+
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('Xcode project is migrated to Xcode 13', () {
+        xcodeProjectInfoFile.writeAsStringSync('''
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+			attributes = {
+				LastUpgradeCheck = 1020;
+				ORGANIZATIONNAME = "";
+''');
+
+        xcodeProjectSchemeFile.writeAsStringSync('''
+<Scheme
+   LastUpgradeVersion = "1020"
+   version = "1.3">
+''');
+
+        final ProjectObjectVersionMigration iosProjectMigration = ProjectObjectVersionMigration(
+          project,
+          testLogger,
+        );
+        expect(iosProjectMigration.migrate(), isTrue);
+
+        expect(xcodeProjectInfoFile.readAsStringSync(), '''
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+			attributes = {
+				LastUpgradeCheck = 1300;
+				ORGANIZATIONNAME = "";
+''');
+
+        expect(xcodeProjectSchemeFile.readAsStringSync(), '''
+<Scheme
+   LastUpgradeVersion = "1300"
+   version = "1.3">
+''');
+        // Only print once even though 3 lines were changed.
+        expect('Updating project for Xcode compatibility'.allMatches(testLogger.statusText).length, 1);
+      });
+    });
+
+    group('add CADisableMinimumFrameDurationOnPhone key to info.plist migration', () {
+      late MemoryFileSystem memoryFileSystem;
+      late BufferLogger testLogger;
+      late FakeIosProject project;
+      late File infoPlistFile;
+
+      setUp(() {
+        memoryFileSystem = MemoryFileSystem();
+        testLogger = BufferLogger.test();
+        project = FakeIosProject();
+        infoPlistFile = memoryFileSystem.file('info.plist');
+        project.defaultHostInfoPlist = infoPlistFile;
+      });
+
+      testWithoutContext('skipped if files are missing', () {
+        final MinimumFrameDurationMigration iosProjectMigration = MinimumFrameDurationMigration(
+          project,
+          testLogger,
+        );
+        expect(iosProjectMigration.migrate(), isTrue);
+        expect(infoPlistFile.existsSync(), isFalse);
+
+        expect(testLogger.traceText, contains('Info.plist not found, skipping minimum frame duration migration.'));
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('skipped if nothing to upgrade', () {
+        const String infoPlistFileContent = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+</dict>
+</plist>
+''';
+        infoPlistFile.writeAsStringSync(infoPlistFileContent);
+
+        final MinimumFrameDurationMigration iosProjectMigration = MinimumFrameDurationMigration(
+          project,
+          testLogger,
+        );
+        final DateTime infoPlistFileLastModified = infoPlistFile.lastModifiedSync();
+        expect(iosProjectMigration.migrate(), isTrue);
+
+        expect(infoPlistFile.lastModifiedSync(), infoPlistFileLastModified);
+        expect(testLogger.statusText, isEmpty);
+      });
+
+      testWithoutContext('info.plist is migrated to use CADisableMinimumFrameDurationOnPhone', () {
+        const String infoPlistFileContent = '''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+''';
+        infoPlistFile.writeAsStringSync(infoPlistFileContent);
+
+        final MinimumFrameDurationMigration iosProjectMigration = MinimumFrameDurationMigration(
+          project,
+          testLogger,
+        );
+        expect(iosProjectMigration.migrate(), isTrue);
+        expect(infoPlistFile.readAsStringSync(), equals('''
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CADisableMinimumFrameDurationOnPhone</key>
+	<true/>
+</dict>
+</plist>
+'''));
       });
     });
   });
@@ -614,7 +830,16 @@ class FakeIosProject extends Fake implements IosProject {
   File xcodeProjectInfoFile = MemoryFileSystem.test().file('xcodeProjectInfoFile');
 
   @override
+  File xcodeProjectSchemeFile = MemoryFileSystem.test().file('xcodeProjectSchemeFile');
+
+  @override
   File appFrameworkInfoPlist = MemoryFileSystem.test().file('appFrameworkInfoPlist');
+
+  @override
+  File defaultHostInfoPlist = MemoryFileSystem.test().file('defaultHostInfoPlist');
+
+  @override
+  File podfile = MemoryFileSystem.test().file('Podfile');
 }
 
 class FakeIOSMigrator extends ProjectMigrator {

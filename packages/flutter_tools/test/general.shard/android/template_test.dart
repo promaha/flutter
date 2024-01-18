@@ -33,11 +33,10 @@ void main() {
         fileSystem: fileSystem,
         logger: logger,
         templateRenderer: const MustacheTemplateRenderer(),
-        templateManifest: null
     );
 
     final Map<String, Object> context = <String, Object>{
-      'androidIdentifier': 'in.when.there'
+      'androidIdentifier': 'in.when.there',
     };
     template.render(destination, context);
 

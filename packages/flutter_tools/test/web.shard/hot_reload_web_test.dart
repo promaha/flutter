@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'dart:async';
 
 import 'package:file/file.dart';
@@ -14,9 +12,9 @@ import '../integration.shard/test_utils.dart';
 import '../src/common.dart';
 
 void main() {
-  Directory tempDir;
+  late Directory tempDir;
   final HotReloadProject project = HotReloadProject();
-  FlutterRunTestDriver flutter;
+  late FlutterRunTestDriver flutter;
 
   setUp(() async {
     tempDir = createResolvedTempDirectorySync('hot_reload_test.');
@@ -25,8 +23,8 @@ void main() {
   });
 
   tearDown(() async {
-    await flutter?.stop();
-    await flutter?.done;
+    await flutter.stop();
+    await flutter.done;
     tryToDelete(tempDir);
   });
 
@@ -38,7 +36,6 @@ void main() {
   testWithoutContext('newly added code executes during hot restart', () async {
     final Completer<void> completer = Completer<void>();
     final StreamSubscription<String> subscription = flutter.stdout.listen((String line) {
-      print(line);
       if (line.contains('(((((RELOAD WORKED)))))')) {
         completer.complete();
       }
@@ -56,7 +53,6 @@ void main() {
   testWithoutContext('newly added code executes during hot restart - canvaskit', () async {
     final Completer<void> completer = Completer<void>();
     final StreamSubscription<String> subscription = flutter.stdout.listen((String line) {
-      print(line);
       if (line.contains('(((((RELOAD WORKED)))))')) {
         completer.complete();
       }
@@ -70,5 +66,5 @@ void main() {
     } finally {
       await subscription.cancel();
     }
-  }, skip: true); // Skipping for https://github.com/flutter/flutter/issues/85575.
+  }, skip: true); // Skipping for https://github.com/flutter/flutter/issues/85043.
 }

@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import 'package:file/file.dart';
 import 'package:file/memory.dart';
 import 'package:flutter_tools/src/artifacts.dart';
@@ -12,7 +10,8 @@ import 'package:flutter_tools/src/base/logger.dart';
 import 'package:flutter_tools/src/base/process.dart';
 import 'package:flutter_tools/src/build_info.dart';
 import 'package:flutter_tools/src/cache.dart';
-import 'package:flutter_tools/src/ios/devices.dart';
+import 'package:flutter_tools/src/ios/code_signing.dart';
+import 'package:flutter_tools/src/ios/iproxy.dart';
 import 'package:flutter_tools/src/ios/mac.dart';
 import 'package:flutter_tools/src/project.dart';
 import 'package:flutter_tools/src/reporting/reporting.dart';
@@ -23,15 +22,15 @@ import '../../src/fake_process_manager.dart';
 import '../../src/fakes.dart';
 
 void main() {
-  BufferLogger logger;
+  late BufferLogger logger;
 
   setUp(() {
     logger = BufferLogger.test();
   });
 
   group('IMobileDevice', () {
-    Artifacts artifacts;
-    Cache cache;
+    late Artifacts artifacts;
+    late Cache cache;
 
     setUp(() {
       artifacts = Artifacts.test();
@@ -44,8 +43,8 @@ void main() {
     });
 
     group('screenshot', () {
-      FakeProcessManager fakeProcessManager;
-      File outputFile;
+      late FakeProcessManager fakeProcessManager;
+      late File outputFile;
 
       setUp(() {
         fakeProcessManager = FakeProcessManager.empty();
@@ -77,7 +76,7 @@ void main() {
         expect(() async => iMobileDevice.takeScreenshot(
           outputFile,
           '1234',
-          IOSDeviceInterface.usb,
+          IOSDeviceConnectionInterface.usb,
         ), throwsA(anything));
         expect(fakeProcessManager.hasRemainingExpectations, isFalse);
       });
@@ -100,7 +99,7 @@ void main() {
         await iMobileDevice.takeScreenshot(
           outputFile,
           '1234',
-          IOSDeviceInterface.usb,
+          IOSDeviceConnectionInterface.usb,
         );
         expect(fakeProcessManager.hasRemainingExpectations, isFalse);
       });
@@ -123,7 +122,7 @@ void main() {
         await iMobileDevice.takeScreenshot(
           outputFile,
           '1234',
-          IOSDeviceInterface.network,
+          IOSDeviceConnectionInterface.network,
         );
         expect(fakeProcessManager.hasRemainingExpectations, isFalse);
       });
@@ -131,8 +130,8 @@ void main() {
   });
 
   group('Diagnose Xcode build failure', () {
-    Map<String, String> buildSettings;
-    TestUsage testUsage;
+    late Map<String, String> buildSettings;
+    late TestUsage testUsage;
 
     setUp(() {
       buildSettings = <String, String>{
@@ -168,7 +167,11 @@ void main() {
       ));
     });
 
-    testWithoutContext('No provisioning profile shows message', () async {
+    testWithoutContext('fallback to stdout: No provisioning profile shows message', () async {
+      final Map<String, String> buildSettingsWithDevTeam = <String, String>{
+        'PRODUCT_BUNDLE_IDENTIFIER': 'test.app',
+        'DEVELOPMENT_TEAM': 'a team',
+      };
       final XcodeBuildResult buildResult = XcodeBuildResult(
         success: false,
         stdout: '''
@@ -196,7 +199,7 @@ Xcode's output:
     === CLEAN TARGET Runner OF PROJECT Runner WITH CONFIGURATION Release ===
 
     Check dependencies
-    [BCEROR]No profiles for 'com.example.test' were found:  Xcode couldn't find a provisioning profile matching 'com.example.test'.
+    [BCEROR]"Runner" requires a provisioning profile. Select a provisioning profile in the Signing & Capabilities editor.
     [BCEROR]Code signing is required for product type 'Application' in SDK 'iOS 10.3'
     [BCEROR]Code signing is required for product type 'Application' in SDK 'iOS 10.3'
     [BCEROR]Code signing is required for product type 'Application' in SDK 'iOS 10.3'
@@ -230,14 +233,14 @@ Error launching application on iPhone.''',
           buildCommands: <String>['xcrun', 'xcodebuild', 'blah'],
           appDirectory: '/blah/blah',
           environmentType: EnvironmentType.physical,
-          buildSettings: buildSettings,
+          buildSettings: buildSettingsWithDevTeam,
         ),
       );
 
       await diagnoseXcodeBuildFailure(buildResult, testUsage, logger);
       expect(
         logger.errorText,
-        contains("No Provisioning Profile was found for your project's Bundle Identifier or your \ndevice."),
+        contains(noProvisioningProfileInstruction),
       );
     });
 
@@ -321,80 +324,6 @@ Could not build the precompiled application for the device.''',
         contains('Building a deployable iOS app requires a selected Development Team with a \nProvisioning Profile.'),
       );
     });
-
-    testWithoutContext('embedded and linked framework iOS mismatch shows message', () async {
-      final XcodeBuildResult buildResult = XcodeBuildResult(
-        success: false,
-        stdout: '''
-Launching lib/main.dart on iPhone in debug mode...
-Automatically signing iOS for device deployment using specified development team in Xcode project: blah
-Xcode build done. 5.7s
-Failed to build iOS app
-Error output from Xcode build:
-↳
-** BUILD FAILED **
-Xcode's output:
-↳
-note: Using new build system
-note: Building targets in parallel
-note: Planning build
-note: Constructing build description
-error: Building for iOS Simulator, but the linked and embedded framework 'App.framework' was built for iOS. (in target 'Runner' from project 'Runner')
-Could not build the precompiled application for the device.
-
-Error launching application on iPhone.
-Exited (sigterm)''',
-        xcodeBuildExecution: XcodeBuildExecution(
-          buildCommands: <String>['xcrun', 'xcodebuild', 'blah'],
-          appDirectory: '/blah/blah',
-          environmentType: EnvironmentType.physical,
-          buildSettings: buildSettings,
-        ),
-      );
-
-      await diagnoseXcodeBuildFailure(buildResult, testUsage, logger);
-      expect(
-        logger.errorText,
-        contains('Your Xcode project requires migration.'),
-      );
-    });
-
-    testWithoutContext('embedded and linked framework iOS simulator mismatch shows message', () async {
-      final XcodeBuildResult buildResult = XcodeBuildResult(
-        success: false,
-        stdout: '''
-Launching lib/main.dart on iPhone in debug mode...
-Automatically signing iOS for device deployment using specified development team in Xcode project: blah
-Xcode build done. 5.7s
-Failed to build iOS app
-Error output from Xcode build:
-↳
-** BUILD FAILED **
-Xcode's output:
-↳
-note: Using new build system
-note: Building targets in parallel
-note: Planning build
-note: Constructing build description
-error: Building for iOS, but the linked and embedded framework 'App.framework' was built for iOS Simulator. (in target 'Runner' from project 'Runner')
-Could not build the precompiled application for the device.
-
-Error launching application on iPhone.
-Exited (sigterm)''',
-        xcodeBuildExecution: XcodeBuildExecution(
-          buildCommands: <String>['xcrun', 'xcodebuild', 'blah'],
-          appDirectory: '/blah/blah',
-          environmentType: EnvironmentType.physical,
-          buildSettings: buildSettings,
-        ),
-      );
-
-      await diagnoseXcodeBuildFailure(buildResult, testUsage, logger);
-      expect(
-        logger.errorText,
-        contains('Your Xcode project requires migration.'),
-      );
-    });
   });
 
   group('Upgrades project.pbxproj for old asset usage', () {
@@ -445,7 +374,7 @@ Exited (sigterm)''',
   });
 
   group('remove Finder extended attributes', () {
-    Directory projectDirectory;
+    late Directory projectDirectory;
     setUp(() {
       final MemoryFileSystem fs = MemoryFileSystem.test();
       projectDirectory = fs.directory('flutter_project');
@@ -459,7 +388,7 @@ Exited (sigterm)''',
           '-d',
           'com.apple.FinderInfo',
           projectDirectory.path,
-        ])
+        ]),
       ]);
 
       await removeFinderExtendedAttributes(projectDirectory, ProcessUtils(processManager: processManager, logger: logger), logger);
@@ -468,14 +397,16 @@ Exited (sigterm)''',
 
     testWithoutContext('ignores errors', () async {
       final FakeProcessManager processManager = FakeProcessManager.list(<FakeCommand>[
-        FakeCommand(command: <String>[
-          'xattr',
-          '-r',
-          '-d',
-          'com.apple.FinderInfo',
-          projectDirectory.path,
-        ], exitCode: 1,
-        )
+        FakeCommand(
+          command: <String>[
+            'xattr',
+            '-r',
+            '-d',
+            'com.apple.FinderInfo',
+            projectDirectory.path,
+          ],
+          exitCode: 1,
+        ),
       ]);
 
       await removeFinderExtendedAttributes(projectDirectory, ProcessUtils(processManager: processManager, logger: logger), logger);
@@ -491,8 +422,8 @@ class FakeIosProject extends Fake implements IosProject {
   final File xcodeProjectInfoFile;
 
   @override
-  Future<String> hostAppBundleName(BuildInfo buildInfo) async => 'UnitTestRunner.app';
+  Future<String> hostAppBundleName(BuildInfo? buildInfo) async => 'UnitTestRunner.app';
 
   @override
-  final Directory xcodeProject = null;
+  Directory get xcodeProject => xcodeProjectInfoFile.fileSystem.directory('Runner.xcodeproj');
 }

@@ -2,11 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
 import '../../artifacts.dart';
 import '../../base/file_system.dart';
 import '../../build_info.dart';
+import '../../convert.dart';
 import '../../devfs.dart';
 import '../../project.dart';
 import '../build_system.dart';
@@ -49,7 +48,11 @@ class UnpackLinux extends Target {
 
   @override
   Future<void> build(Environment environment) async {
-    final BuildMode buildMode = getBuildModeForName(environment.defines[kBuildMode]);
+    final String? buildModeEnvironment = environment.defines[kBuildMode];
+    if (buildModeEnvironment == null) {
+      throw MissingDefineException(kBuildMode, name);
+    }
+    final BuildMode buildMode = getBuildModeForName(buildModeEnvironment);
     final String engineSourcePath = environment.artifacts
       .getArtifactPath(
         Artifact.linuxDesktopPath,
@@ -117,10 +120,11 @@ abstract class BundleLinuxAssets extends Target {
 
   @override
   Future<void> build(Environment environment) async {
-    if (environment.defines[kBuildMode] == null) {
+    final String? buildModeEnvironment = environment.defines[kBuildMode];
+    if (buildModeEnvironment == null) {
       throw MissingDefineException(kBuildMode, 'bundle_linux_assets');
     }
-    final BuildMode buildMode = getBuildModeForName(environment.defines[kBuildMode]);
+    final BuildMode buildMode = getBuildModeForName(buildModeEnvironment);
     final Directory outputDirectory = environment.outputDir
       .childDirectory('flutter_assets');
     if (!outputDirectory.existsSync()) {
@@ -132,7 +136,7 @@ abstract class BundleLinuxAssets extends Target {
       environment.buildDir.childFile('app.dill')
         .copySync(outputDirectory.childFile('kernel_blob.bin').path);
     }
-    final String versionInfo = FlutterProject.current().getVersionInfo();
+    final String versionInfo = getVersionInfo(environment.defines);
     final Depfile depfile = await copyAssets(
       environment,
       outputDirectory,
@@ -149,6 +153,23 @@ abstract class BundleLinuxAssets extends Target {
       depfile,
       environment.buildDir.childFile('flutter_assets.d'),
     );
+  }
+
+  /// Return json encoded string that contains data about version for package_info
+  String getVersionInfo(Map<String, String> defines) {
+    final Map<String, dynamic> versionInfo =
+        jsonDecode(FlutterProject.current().getVersionInfo())
+            as Map<String, dynamic>;
+
+    if (defines.containsKey(kBuildNumber)) {
+      versionInfo['build_number'] = defines[kBuildNumber];
+    }
+
+    if (defines.containsKey(kBuildName)) {
+      versionInfo['version'] = defines[kBuildName];
+    }
+
+    return jsonEncode(versionInfo);
   }
 }
 
@@ -190,7 +211,7 @@ class LinuxAotBundle extends Target {
 }
 
 class DebugBundleLinuxAssets extends BundleLinuxAssets {
-  const DebugBundleLinuxAssets(TargetPlatform targetPlatform) : super(targetPlatform);
+  const DebugBundleLinuxAssets(super.targetPlatform);
 
   @override
   String get name => 'debug_bundle_${getNameForTargetPlatform(targetPlatform)}_assets';
@@ -207,7 +228,7 @@ class DebugBundleLinuxAssets extends BundleLinuxAssets {
 }
 
 class ProfileBundleLinuxAssets extends BundleLinuxAssets {
-  const ProfileBundleLinuxAssets(TargetPlatform targetPlatform) : super(targetPlatform);
+  const ProfileBundleLinuxAssets(super.targetPlatform);
 
   @override
   String get name => 'profile_bundle_${getNameForTargetPlatform(targetPlatform)}_assets';
@@ -223,7 +244,7 @@ class ProfileBundleLinuxAssets extends BundleLinuxAssets {
 }
 
 class ReleaseBundleLinuxAssets extends BundleLinuxAssets {
-  const ReleaseBundleLinuxAssets(TargetPlatform targetPlatform) : super(targetPlatform);
+  const ReleaseBundleLinuxAssets(super.targetPlatform);
 
   @override
   String get name => 'release_bundle_${getNameForTargetPlatform(targetPlatform)}_assets';

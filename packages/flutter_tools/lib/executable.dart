@@ -2,10 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-// @dart = 2.8
-
-import 'package:meta/meta.dart';
-
 import 'runner.dart' as runner;
 import 'src/artifacts.dart';
 import 'src/base/context.dart';
@@ -26,6 +22,7 @@ import 'src/commands/config.dart';
 import 'src/commands/create.dart';
 import 'src/commands/custom_devices.dart';
 import 'src/commands/daemon.dart';
+import 'src/commands/debug_adapter.dart';
 import 'src/commands/devices.dart';
 import 'src/commands/doctor.dart';
 import 'src/commands/downgrade.dart';
@@ -49,10 +46,12 @@ import 'src/commands/update_packages.dart';
 import 'src/commands/upgrade.dart';
 import 'src/devtools_launcher.dart';
 import 'src/features.dart';
-import 'src/globals_null_migrated.dart' as globals;
+import 'src/globals.dart' as globals;
 // Files in `isolated` are intentionally excluded from google3 tooling.
 import 'src/isolated/mustache_template.dart';
 import 'src/isolated/resident_web_runner.dart';
+import 'src/pre_run_validator.dart';
+import 'src/project_validator.dart';
 import 'src/resident_runner.dart';
 import 'src/runner/flutter_command.dart';
 import 'src/web/web_runner.dart';
@@ -108,11 +107,9 @@ Future<void> main(List<String> args) async {
       // devtools source code.
       DevtoolsLauncher: () => DevtoolsServerLauncher(
         processManager: globals.processManager,
-        fileSystem: globals.fs,
-        pubExecutable: globals.artifacts.getHostArtifact(HostArtifact.pubExecutable).path,
+        dartExecutable: globals.artifacts!.getHostArtifact(HostArtifact.engineDartBinary).path,
         logger: globals.logger,
-        platform: globals.platform,
-        persistentToolState: globals.persistentToolState,
+        botDetector: globals.botDetector,
       ),
       Logger: () {
         final LoggerFactory loggerFactory = LoggerFactory(
@@ -128,13 +125,14 @@ Future<void> main(List<String> args) async {
           windows: globals.platform.isWindows,
         );
       },
+      PreRunValidator: () => PreRunValidator(fileSystem: globals.fs),
     },
   );
 }
 
 List<FlutterCommand> generateCommands({
-  @required bool verboseHelp,
-  @required bool verbose,
+  required bool verboseHelp,
+  required bool verbose,
 }) => <FlutterCommand>[
   AnalyzeCommand(
     verboseHelp: verboseHelp,
@@ -143,7 +141,8 @@ List<FlutterCommand> generateCommands({
     processManager: globals.processManager,
     logger: globals.logger,
     terminal: globals.terminal,
-    artifacts: globals.artifacts,
+    artifacts: globals.artifacts!,
+    allProjectValidators: <ProjectValidator>[],
   ),
   AssembleCommand(verboseHelp: verboseHelp, buildSystem: globals.buildSystem),
   AttachCommand(verboseHelp: verboseHelp),
@@ -163,6 +162,7 @@ List<FlutterCommand> generateCommands({
   ),
   CreateCommand(verboseHelp: verboseHelp),
   DaemonCommand(hidden: !verboseHelp),
+  DebugAdapterCommand(verboseHelp: verboseHelp),
   DevicesCommand(verboseHelp: verboseHelp),
   DoctorCommand(verbose: verbose),
   DowngradeCommand(verboseHelp: verboseHelp),
@@ -208,9 +208,9 @@ List<FlutterCommand> generateCommands({
 /// Our logger class hierarchy and runtime requirements are overly complicated.
 class LoggerFactory {
   LoggerFactory({
-    @required Terminal terminal,
-    @required Stdio stdio,
-    @required OutputPreferences outputPreferences,
+    required Terminal terminal,
+    required Stdio stdio,
+    required OutputPreferences outputPreferences,
     StopwatchFactory stopwatchFactory = const StopwatchFactory(),
   }) : _terminal = terminal,
        _stdio = stdio,
@@ -224,11 +224,11 @@ class LoggerFactory {
 
   /// Create the appropriate logger for the current platform and configuration.
   Logger createLogger({
-    @required bool verbose,
-    @required bool prefixedErrors,
-    @required bool machine,
-    @required bool daemon,
-    @required bool windows,
+    required bool verbose,
+    required bool prefixedErrors,
+    required bool machine,
+    required bool daemon,
+    required bool windows,
   }) {
     Logger logger;
     if (windows) {

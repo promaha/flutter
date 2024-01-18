@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:ui' as ui show TextBox, BoxHeightStyle, BoxWidthStyle;
+import 'dart:ui' as ui show TextBox, BoxHeightStyle, BoxWidthStyle, Paragraph;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
@@ -20,10 +20,10 @@ const String _kText = "I polished up that handle so carefullee\nThat now I am th
 // containing an empty box.
 class RenderParagraphWithEmptySelectionBoxList extends RenderParagraph {
   RenderParagraphWithEmptySelectionBoxList(
-    InlineSpan text, {
-    required TextDirection textDirection,
+    super.text, {
+    required super.textDirection,
     required this.emptyListSelection,
-  }) : super(text, textDirection: textDirection);
+  });
 
   TextSelection emptyListSelection;
 
@@ -50,10 +50,10 @@ class RenderParagraphWithEmptySelectionBoxList extends RenderParagraph {
 // can return an empty list for a WidgetSpan with empty dimensions.
 class RenderParagraphWithEmptyBoxListForWidgetSpan extends RenderParagraph {
   RenderParagraphWithEmptyBoxListForWidgetSpan(
-    InlineSpan text, {
-    required List<RenderBox> children,
-    required TextDirection textDirection,
-  }) : super(text, children: children, textDirection: textDirection);
+    super.text, {
+    required List<RenderBox> super.children,
+    required super.textDirection,
+  });
 
   @override
   List<ui.TextBox> getBoxesForSelection(
@@ -73,6 +73,8 @@ class RenderParagraphWithEmptyBoxListForWidgetSpan extends RenderParagraph {
 }
 
 void main() {
+  TestRenderingFlutterBinding.ensureInitialized();
+
   test('getOffsetForCaret control test', () {
     final RenderParagraph paragraph = RenderParagraph(
       const TextSpan(text: _kText),
@@ -118,7 +120,7 @@ void main() {
 
     final TextPosition positionBelow = paragraph.getPositionForOffset(const Offset(5.0, 20.0));
     expect(positionBelow.offset, greaterThan(position40.offset));
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61015
+  });
 
   test('getBoxesForSelection control test', () {
     final RenderParagraph paragraph = RenderParagraph(
@@ -184,7 +186,7 @@ void main() {
     expect(boxes[2], const TextBox.fromLTRBD(0.0, 10.0, 130.0, 20.0, TextDirection.ltr));
     // 'fifth':
     expect(boxes[3], const TextBox.fromLTRBD(0.0, 20.0, 50.0, 30.0, TextDirection.ltr));
-  }, skip: !isLinux); // mac typography values can differ
+  }, skip: !isLinux); // mac typography values can differ https://github.com/flutter/flutter/issues/12357
 
   test('getBoxesForSelection test with boxHeightStyle and boxWidthStyle set to max', () {
     final RenderParagraph paragraph = RenderParagraph(
@@ -243,7 +245,7 @@ void main() {
 
     final TextRange range85 = paragraph.getWordBoundary(const TextPosition(offset: 75));
     expect(range85.textInside(_kText), equals("Queen's"));
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61017
+  });
 
   test('overflow test', () {
     final RenderParagraph paragraph = RenderParagraph(
@@ -254,7 +256,6 @@ void main() {
       ),
       textDirection: TextDirection.ltr,
       maxLines: 1,
-      softWrap: true,
     );
 
     void relayoutWith({
@@ -276,7 +277,7 @@ void main() {
     relayoutWith(maxLines: 3, softWrap: true, overflow: TextOverflow.clip);
     expect(paragraph.size.height, equals(3 * lineHeight));
 
-    relayoutWith(maxLines: null, softWrap: true, overflow: TextOverflow.clip);
+    relayoutWith(softWrap: true, overflow: TextOverflow.clip);
     expect(paragraph.size.height, greaterThan(5 * lineHeight));
 
     // Try again with ellipsis overflow. We can't test that the ellipsis are
@@ -291,7 +292,7 @@ void main() {
     // infinite wrapping. However, if we did, we'd never know when to append an
     // ellipsis, so this really means "append ellipsis as soon as we exceed the
     // width".
-    relayoutWith(maxLines: null, softWrap: true, overflow: TextOverflow.ellipsis);
+    relayoutWith(softWrap: true, overflow: TextOverflow.ellipsis);
     expect(paragraph.size.height, equals(2 * lineHeight));
 
     // Now with no soft wrapping.
@@ -301,7 +302,7 @@ void main() {
     relayoutWith(maxLines: 3, softWrap: false, overflow: TextOverflow.clip);
     expect(paragraph.size.height, equals(2 * lineHeight));
 
-    relayoutWith(maxLines: null, softWrap: false, overflow: TextOverflow.clip);
+    relayoutWith(softWrap: false, overflow: TextOverflow.clip);
     expect(paragraph.size.height, equals(2 * lineHeight));
 
     relayoutWith(maxLines: 1, softWrap: false, overflow: TextOverflow.ellipsis);
@@ -310,7 +311,7 @@ void main() {
     relayoutWith(maxLines: 3, softWrap: false, overflow: TextOverflow.ellipsis);
     expect(paragraph.size.height, equals(3 * lineHeight));
 
-    relayoutWith(maxLines: null, softWrap: false, overflow: TextOverflow.ellipsis);
+    relayoutWith(softWrap: false, overflow: TextOverflow.ellipsis);
     expect(paragraph.size.height, equals(2 * lineHeight));
 
     // Test presence of the fade effect.
@@ -439,7 +440,7 @@ void main() {
     expect(boxes[2].toRect().height, moreOrLessEquals(26.0, epsilon: 0.0001));
     expect(boxes[3].toRect().width, anyOf(14.0, 13.0));
     expect(boxes[3].toRect().height, moreOrLessEquals(13.0, epsilon: 0.0001));
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61016
+  });
 
   test('toStringDeep', () {
     final RenderParagraph paragraph = RenderParagraph(
@@ -576,7 +577,6 @@ void main() {
           WidgetSpan(child: Text(sentence)),
         ],
       ),
-      textScaleFactor: 1.0,
       children: renderBoxes,
       textDirection: TextDirection.ltr,
     );
@@ -605,7 +605,7 @@ void main() {
     // intrinsicHeight = singleLineHeight * textScaleFactor * two lines.
     expect(maxIntrinsicHeight, singleLineHeight * 2.0 * 2);
     expect(maxIntrinsicHeight, minIntrinsicHeight);
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
+  });
 
   test('can compute IntrinsicWidth for widget span', () {
     // Regression test for https://github.com/flutter/flutter/issues/59316
@@ -621,7 +621,6 @@ void main() {
           WidgetSpan(child: Text(sentence)),
         ],
       ),
-      textScaleFactor: 1.0,
       children: renderBoxes,
       textDirection: TextDirection.ltr,
     );
@@ -648,7 +647,7 @@ void main() {
     final double maxIntrinsicWidth = paragraph.computeMaxIntrinsicWidth(fixedHeight);
     // maxIntrinsicWidth = widthForOneLine * textScaleFactor
     expect(maxIntrinsicWidth, widthForOneLine * 2.0);
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
+  });
 
   test('inline widgets multiline test', () {
     const TextSpan text = TextSpan(
@@ -702,7 +701,39 @@ void main() {
     expect(boxes[8], const TextBox.fromLTRBD(14.0, 28.0, 28.0, 42.0 , TextDirection.ltr));
   }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
 
-  test('Supports gesture recognizer semantics', () {
+  test('Does not include the semantics node of truncated rendering children', () {
+    // Regression test for https://github.com/flutter/flutter/issues/88180
+    const double screenWidth = 100;
+    const String sentence = 'truncated';
+    final List<RenderBox> renderBoxes = <RenderBox>[
+      RenderParagraph(
+          const TextSpan(text: sentence), textDirection: TextDirection.ltr),
+    ];
+    final RenderParagraph paragraph = RenderParagraph(
+      const TextSpan(
+        text: 'a long line to be truncated.',
+        children: <InlineSpan>[
+          WidgetSpan(child: Text(sentence)),
+        ],
+      ),
+      overflow: TextOverflow.ellipsis,
+      children: renderBoxes,
+      textDirection: TextDirection.ltr,
+    );
+    layout(paragraph, constraints: const BoxConstraints(maxWidth: screenWidth));
+    final SemanticsNode result = SemanticsNode();
+    final SemanticsNode truncatedChild = SemanticsNode();
+    truncatedChild.tags = <SemanticsTag>{const PlaceholderSpanIndexSemanticsTag(0)};
+    paragraph.assembleSemanticsNode(result, SemanticsConfiguration(), <SemanticsNode>[truncatedChild]);
+    // It should only contain the semantics node of the TextSpan.
+    expect(result.childrenCount, 1);
+    result.visitChildren((SemanticsNode node) {
+      expect(node != truncatedChild, isTrue);
+      return true;
+    });
+  });
+
+    test('Supports gesture recognizer semantics', () {
     final RenderParagraph paragraph = RenderParagraph(
       TextSpan(text: _kText, children: <InlineSpan>[
         TextSpan(text: 'one', recognizer: TapGestureRecognizer()..onTap = () {}),
@@ -714,7 +745,19 @@ void main() {
     layout(paragraph);
 
     paragraph.assembleSemanticsNode(SemanticsNode(), SemanticsConfiguration(), <SemanticsNode>[]);
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
+  });
+
+  test('Supports empty text span with spell out', () {
+    final RenderParagraph paragraph = RenderParagraph(
+      const TextSpan(text: '', spellOut: true),
+      textDirection: TextDirection.rtl,
+    );
+    layout(paragraph);
+    final SemanticsNode node = SemanticsNode();
+    paragraph.assembleSemanticsNode(node, SemanticsConfiguration(), <SemanticsNode>[]);
+    expect(node.attributedLabel.string, '');
+    expect(node.attributedLabel.attributes.length, 0);
+  });
 
   test('Asserts on unsupported gesture recognizer', () {
     final RenderParagraph paragraph = RenderParagraph(
@@ -733,7 +776,7 @@ void main() {
       expect(e.message, 'MultiTapGestureRecognizer is not supported.');
     }
     expect(failed, true);
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
+  });
 
   test('assembleSemanticsNode handles text spans that do not yield selection boxes', () {
     final RenderParagraph paragraph = RenderParagraphWithEmptySelectionBoxList(
@@ -750,7 +793,7 @@ void main() {
     final SemanticsNode node = SemanticsNode();
     paragraph.assembleSemanticsNode(node, SemanticsConfiguration(), <SemanticsNode>[]);
     expect(node.childrenCount, 2);
-  }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
+  });
 
   test('assembleSemanticsNode handles empty WidgetSpans that do not yield selection boxes', () {
     final TextSpan text = TextSpan(text: '', children: <InlineSpan>[
@@ -772,4 +815,134 @@ void main() {
     paragraph.assembleSemanticsNode(node, SemanticsConfiguration(), <SemanticsNode>[]);
     expect(node.childrenCount, 2);
   }, skip: isBrowser); // https://github.com/flutter/flutter/issues/61020
+
+  group('Selection', () {
+    void selectionParagraph(RenderParagraph paragraph, TextPosition start, TextPosition end) {
+      for (final Selectable selectable in (paragraph.registrar! as TestSelectionRegistrar).selectables) {
+        selectable.dispatchSelectionEvent(
+          SelectionEdgeUpdateEvent.forStart(
+            globalPosition: paragraph.getOffsetForCaret(start, Rect.zero),
+          ),
+        );
+        selectable.dispatchSelectionEvent(
+          SelectionEdgeUpdateEvent.forEnd(
+            globalPosition: paragraph.getOffsetForCaret(end, Rect.zero),
+          ),
+        );
+      }
+    }
+
+    test('subscribe to SelectionRegistrar', () {
+      final TestSelectionRegistrar registrar = TestSelectionRegistrar();
+      final RenderParagraph paragraph = RenderParagraph(
+        const TextSpan(text: '1234567'),
+        textDirection: TextDirection.ltr,
+        registrar: registrar,
+      );
+      expect(registrar.selectables.length, 1);
+
+      paragraph.text = const TextSpan(text: '');
+      expect(registrar.selectables.length, 0);
+    });
+
+    test('paints selection highlight', () async {
+      final TestSelectionRegistrar registrar = TestSelectionRegistrar();
+      const Color selectionColor = Color(0xAF6694e8);
+      final RenderParagraph paragraph = RenderParagraph(
+        const TextSpan(text: '1234567'),
+        textDirection: TextDirection.ltr,
+        registrar: registrar,
+        selectionColor: selectionColor,
+      );
+      layout(paragraph);
+      final MockPaintingContext paintingContext = MockPaintingContext();
+      paragraph.paint(paintingContext, Offset.zero);
+      expect(paintingContext.canvas.drawedRect, isNull);
+      expect(paintingContext.canvas.drawedRectPaint, isNull);
+      selectionParagraph(paragraph, const TextPosition(offset: 1), const TextPosition(offset: 5));
+      paragraph.paint(paintingContext, Offset.zero);
+      expect(paintingContext.canvas.drawedRect, const Rect.fromLTWH(14.0, 0.0, 56.0, 14.0));
+      expect(paintingContext.canvas.drawedRectPaint!.style, PaintingStyle.fill);
+      expect(paintingContext.canvas.drawedRectPaint!.color, selectionColor);
+
+      selectionParagraph(paragraph, const TextPosition(offset: 2), const TextPosition(offset: 4));
+      paragraph.paint(paintingContext, Offset.zero);
+      expect(paintingContext.canvas.drawedRect, const Rect.fromLTWH(28.0, 0.0, 28.0, 14.0));
+      expect(paintingContext.canvas.drawedRectPaint!.style, PaintingStyle.fill);
+      expect(paintingContext.canvas.drawedRectPaint!.color, selectionColor);
+    });
+
+    test('getPositionForOffset works', () async {
+      final RenderParagraph paragraph = RenderParagraph(const TextSpan(text: '1234567'), textDirection: TextDirection.ltr);
+      layout(paragraph);
+      expect(paragraph.getPositionForOffset(const Offset(42.0, 14.0)), const TextPosition(offset: 3));
+    });
+
+    test('can handle select all when contains widget span', () async {
+      final TestSelectionRegistrar registrar = TestSelectionRegistrar();
+      final List<RenderBox> renderBoxes = <RenderBox>[
+        RenderParagraph(const TextSpan(text: 'widget'), textDirection: TextDirection.ltr),
+      ];
+      final RenderParagraph paragraph = RenderParagraph(
+        const TextSpan(
+          children: <InlineSpan>[
+            TextSpan(text: 'before the span'),
+            WidgetSpan(child: Text('widget')),
+            TextSpan(text: 'after the span'),
+          ]
+        ),
+        textDirection: TextDirection.ltr,
+        registrar: registrar,
+        children: renderBoxes,
+      );
+      layout(paragraph);
+      // The widget span will register to the selection container without going
+      // through the render paragraph.
+      expect(registrar.selectables.length, 2);
+      final Selectable segment1 = registrar.selectables[0];
+      segment1.dispatchSelectionEvent(const SelectAllSelectionEvent());
+      final SelectionGeometry geometry1 = segment1.value;
+      expect(geometry1.hasContent, true);
+      expect(geometry1.status, SelectionStatus.uncollapsed);
+
+      final Selectable segment2 = registrar.selectables[1];
+      segment2.dispatchSelectionEvent(const SelectAllSelectionEvent());
+      final SelectionGeometry geometry2 = segment2.value;
+      expect(geometry2.hasContent, true);
+      expect(geometry2.status, SelectionStatus.uncollapsed);
+    });
+  });
+}
+
+class MockCanvas extends Fake implements Canvas {
+  Rect? drawedRect;
+  Paint? drawedRectPaint;
+
+  @override
+  void drawRect(Rect rect, Paint paint) {
+    drawedRect = rect;
+    drawedRectPaint = paint;
+  }
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) { }
+}
+
+class MockPaintingContext extends Fake implements PaintingContext {
+  @override
+  final MockCanvas canvas = MockCanvas();
+}
+
+class TestSelectionRegistrar extends SelectionRegistrar {
+  final List<Selectable> selectables = <Selectable>[];
+  @override
+  void add(Selectable selectable) {
+    selectables.add(selectable);
+  }
+
+  @override
+  void remove(Selectable selectable) {
+    expect(selectables.remove(selectable), isTrue);
+  }
+
 }
